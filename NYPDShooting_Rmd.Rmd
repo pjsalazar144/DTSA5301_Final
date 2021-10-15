@@ -1,0 +1,217 @@
+---
+title: "NYPDShooting_Rmd"
+author: "P Salazar"
+date: "9/11/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## NYPD Shooting Data
+
+```{r packages, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(gridExtra)
+```
+
+
+
+### Tidying the data
+
+
+Start by reading in the data
+```{r get_data}
+# Read in the data from data.gov website
+url_in = "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+```
+
+
+Read in the data from the csv file
+```{r import_data, message=FALSE}
+nypd_shootings = read_csv(url_in)
+```
+
+
+Standardize the temporal occurrence data: here we combine the occurrence date and time into a single datetime object for more fluid analysis. 
+```{r date_time}
+nypd_shootings = unite(nypd_shootings, "OCCURRENCE", OCCUR_DATE:OCCUR_TIME, sep=" ", remove=TRUE, na.rm=TRUE)
+nypd_shootings$OCCURRENCE = mdy_hms(nypd_shootings$OCCURRENCE)
+```
+
+
+Drop unnecessary columns: for my analysis , I won't be interested in any spatial data more specific than that of the borough in which the incident occurred. 
+```{r select}
+nypd_shootings = nypd_shootings %>%
+select(-c(INCIDENT_KEY, JURISDICTION_CODE, Y_COORD_CD, X_COORD_CD, Longitude, PRECINCT, LOCATION_DESC, Latitude, Lon_Lat))
+```
+
+Summarize
+```{r summary}
+summary(nypd_shootings)
+```
+
+We will take care of na values in the data frame in place using the drop_na function where appropriate.  
+
+
+
+### Visualizing the Data
+
+
+
+#### Shooting occurrence: a closer look at two sample years
+
+
+```{r 2010_2020_hist}
+plt_ny2010 = nypd_shootings %>%
+  drop_na() %>%
+  filter(year(OCCURRENCE)==2010) %>%
+  ggplot(aes(OCCURRENCE)) + geom_histogram(bins=52, color='green') + labs(title='2010', x='Date',y='Number of shootings') + ylim(0, 50)
+
+plt_ny2020= nypd_shootings %>%
+  drop_na() %>%
+  filter(year(OCCURRENCE)==2020) %>%
+  ggplot(aes(OCCURRENCE)) + geom_histogram(bins=52, color='blue') + labs(title='2020', x='Date',y='Number of shootings') +ylim(0, 50)
+
+plt_lst_yrs = list(plt_ny2010, plt_ny2020)
+
+grid.arrange(grobs=plt_lst_yrs, ncol=2, top="Weekly shootings in NYC")
+```
+
+We see here some interesting initial results from a weekly aggregation of shooting incidents in the city as a whole over the course of two sample years: 2010 and 2020. Initially, it's clear that the number of shootings in each week is not very consistent or predictable week-to-week; that is, the histogram is not particularly smooth, as considerable swings occur between individual weeks. 
+
+Graphically, it's quite clear that a significant decrease in the consistency and occurrence of shootings took place between these two sample years. 2020 contains considerable fewer shootings overall. Of particular note here is the drastic dip in shooting occurrence that took place in the spring months of 2020, when the initial stages of the COVID-19 lock down was going into effect. 
+
+
+
+#### Violence over the course of a day: a borough-by-borough analysis
+
+
+```{r 2020_by_hr_grid, message=FALSE, warning=FALSE}
+
+ny_hr2020 = nypd_shootings %>%
+  filter(year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='blue') + 
+    labs(title='New York City', x='Hour',y='Shootings') +  
+    ylim(0, 75)
+
+bronx_hr2020 = nypd_shootings %>%
+  filter(BORO=="BRONX", year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='green') + 
+    labs(title='Bronx', x='Hour',y='Shootings') +
+    ylim(0, 30)
+
+brooklyn_hr2020 = nypd_shootings %>%
+  filter(BORO=="BROOKLYN", year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='purple') + 
+    labs(title='Brooklyn', x='Hour',y='Shootings') +
+    ylim(0, 30)
+
+queens_hr2020 = nypd_shootings %>%
+  filter(BORO=="QUEENS", year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='red') +
+    labs(title='Queens', x='Hour',y='Shootings') + 
+    ylim(0, 30)
+
+manhattan_hr2020 = nypd_shootings %>%
+  filter(BORO=="MANHATTAN", year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='yellow') + 
+    labs(title='Manhattan', x='Hour',y='Shootings') +
+    ylim(0, 30)
+
+statenisland_hr2020 = nypd_shootings %>%
+  filter(BORO=="STATEN ISLAND", year(OCCURRENCE)==2020) %>%
+  drop_na() %>%
+  ggplot(aes(hour(OCCURRENCE))) + 
+    geom_histogram(bins=24, color='orange')+ 
+    labs(title='Staten Island', x='Hour',y='Shootings') + 
+    ylim(0, 30)
+
+plt_lst_hrs = list(ny_hr2020, bronx_hr2020, brooklyn_hr2020, 
+                   manhattan_hr2020, queens_hr2020, 
+                   statenisland_hr2020)
+
+grid.arrange(grobs=plt_lst_hrs, ncol=2, top='Shootings by hour across NYC boroughs, 2020')
+
+```
+
+Here we take a closer look at the occurrence of shootings in NYC with a closer temporal focus, which gives rise to some interesting questions about the granularity of our data analysis. In the top left, we see the histogram of shootings across NYC in 2020, separated out by the hour of the day in which they took place. The frequency of shootings is at its highest late at night and early in the morning (peaking around 1am), and dipping to a low in the mid to late morning (approximately 8am). The transition from maximum frequency to minimum frequency and back again is quite smooth and predictable. 
+
+From a personal safety and law enforcement perspective, however, it may be most useful to break the analysis into its component geographic regions, here represented by the five boroughs of NYC. When we do so, we see immediately that the picture begins to change dramatically relative to the borough being analyzed. While it remains generally true that there shootings peak late at night and dip in the late morning, other salient borough-level trends emerge. The Bronx, for example, experiences a consistent decrease in shooting occurrence between 3pm and 7pm that is entirely at odds with the trend at the city level during these hours. Brooklyn, while mirroring the general NYC trends across the day, seems to have a much longer and more stable "safe period" from 4am to 2pm. Manhattan has a shooting occurrence that is generally lower than that of the other boroughs, despite the density of the population - indeed, there are hours of the day (6am and 8pm) in which no shooting incidents occurred at all in 2020. Queens expresses the same trends as the city as a whole, though considerable more muted. And Staten Island shows itself as far and away the least violent of the boroughs in terms of shooting frequency; also notable is the complete absence of violence in many hours of the day (particularly 8pm, which is one of the highest frequency shooting hours for the city as a whole). 
+
+This considerable diversity of shooting frequency across the different boroughs begs the question of what is the most useful level of analysis of social trends when forming policy and making personal decisions - the general, or the hyper-local? What would these trends look like at a neighborhood, state, or even national level?
+
+
+
+#### The gradual decrease of violence across time - a study in the use of linear models and bias identification
+
+
+```{r shooting_model, warning=FALSE}
+
+ny_totals1 = nypd_shootings %>%
+  drop_na() %>%
+  group_by(year(OCCURRENCE)) %>%
+  summarize(n())
+
+colnames(ny_totals1) = c('year', 'total_shootings')
+mod = lm(total_shootings~year, data=ny_totals1)
+
+ny_totals1 = ny_totals1 %>%
+  mutate(pred=predict(mod))
+
+lin_model1 = ny_totals1 %>%
+  ggplot() + 
+  geom_point(aes(year, total_shootings), color='red') + 
+  geom_line(aes(year, pred), color='blue') + 
+  ylim(0, 2500) + 
+  labs(title='Without NA values', x='Year', y='Total Shootings')
+
+ny_totals2 = nypd_shootings %>%
+  group_by(year(OCCURRENCE)) %>%
+  summarize(n())
+
+colnames(ny_totals2) = c('year', 'total_shootings')
+mod = lm(total_shootings~year, data=ny_totals2)
+
+ny_totals2 = ny_totals2 %>%
+  mutate(pred=predict(mod))
+
+lin_model2 = ny_totals2 %>%
+  ggplot() + 
+  geom_point(aes(year, total_shootings), color='red') + 
+  geom_line(aes(year, pred), color='blue') + 
+  ylim(0, 2500) + 
+  labs(title='With NA values', x='Year', y='Total Shootings')
+
+plt_lst_models = list(lin_model1, lin_model2)
+
+grid.arrange(grobs=plt_lst_models, ncol=2, top='Modelling trends in NYC shooting occurrence, 2006-2020')
+
+```
+
+Given the scope of the data provided here, I was interested initially in the general trends of shooting occurrence. Headlines and the media fixation on negative events often bias our understanding of trends in violence over time. Initially, I constructed the model above using the base dataset, from which I had extracted all NA values for ease of analysis (see left). This shows a clear and drastic negative trend in the occurrence of shootings over the 15-year term of the data. Even considering the jump in violence in 2020, the total number of shootings that take place in NYC over the space of a year decreases by a factor of more than 2. Clearly, the folk intuition and inherent bias of cities as dangerous places that are rife with unregistered firearms and gang violence obscures a more nuanced picture. 
+
+But when the initially excluded NA values are added back into the analysis, the chart undergoes a dramatic change. The plotted trend is still negative, but the slope of the plotted linear model is much less steep. What's more, the anomalous jump in shooting incidents in 2020 balloons. If these NA values are factored into the analysis, the number of shootings in 2020 comes nearly back to the worst years of the mid-aughts. 
+
+This exercise illustrates the importance of a good understanding of the origins of your data and methods used in its compilation prior to engaging in analysis. Deletion or exclusion of NA values, a common enough technique in the process of data cleaning, can produce results of questionable veracity if the data is not well understood. Where do the NA values come from in the current data sets? How were the initial reports on violence formed and compiled in the making of this dataset? Are there duplicate entries and oversights, or is this just the natural result of incomplete information on the ground?
+
+
+```{r sessioninfo}
+sessionInfo()
+```
